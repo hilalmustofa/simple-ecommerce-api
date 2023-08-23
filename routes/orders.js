@@ -33,38 +33,9 @@ router.post("/:productId", checkAuth, async (req, res) => {
   }
 });
 
-router.get("/", checkAuth, async (req, res) => {
-  try {
-    const allOrders = await Orders.findAll({
-      attributes: {
-        exclude: ["deletedAt"],
-      },
-    });
-
-    if (allOrders.length === 0) {
-      return res.status(404).json({ message: "No orders found" });
-    }
-
-    const modifiedOrders = allOrders.map(order => ({
-      id: order.id,
-      productId: order.productId,
-      amount: order.amount,
-      userId: order.userId,
-      createdAt: order.createdAt,
-      updatedAt: order.updatedAt,
-    }));
-
-    return res.status(200).json(modifiedOrders);
-  } catch (error) {
-    console.error(error);
-    return res.status(500).json({ message: error });
-  }
-});
-
 router.get("/my", checkAuth, async (req, res) => {
   try {
     const userId = req.authenticatedUser.id;
-
     const orders = await Orders.findAll({
       where: { userId },
       include: [
@@ -101,8 +72,9 @@ router.get("/my", checkAuth, async (req, res) => {
 
 router.get("/:orderId", checkAuth, async (req, res) => {
   const { orderId } = req.params;
-
+  const userId = req.authenticatedUser.id;
   try {
+    
     const order = await Orders.findByPk(orderId, {
       include: [
         {
@@ -114,6 +86,9 @@ router.get("/:orderId", checkAuth, async (req, res) => {
 
     if (!order) {
       return res.status(404).json({ message: "Order not found" });
+    }
+    if (order.userId !== req.authenticatedUser.id) {
+      return res.status(403).json({ message: "You are not owner of this order" });
     }
 
     const orderDetails = {
@@ -135,14 +110,17 @@ router.get("/:orderId", checkAuth, async (req, res) => {
 
 router.delete("/:orderId", checkAuth, async (req, res) => {
   const { orderId } = req.params;
-
+  const userId = req.authenticatedUser.id;
   try {
     const order = await Orders.findByPk(orderId, {
+      where: { userId },
       include: [Products],
     });
-
     if (!order) {
       return res.status(404).json({ message: "Order not found" });
+    }
+    if (order.userId !== req.authenticatedUser.id) {
+      return res.status(403).json({ message: "You are not owner of this order" });
     }
 
     const product = order.Product;

@@ -62,17 +62,17 @@ npm run start
 
 #### 3. Products (CRUD)
 - All roles can create product
+- Products are associated to each user which means user can only manage their own product
 - Stock management
-- Currently user A can modify or delete product by user B (will be fixed later)
 
 #### 4. Orders (CRUD)
 - All roles can order product
 - Total price automatically calculated based on price * quantity
+- Order are associated to each user, same as product
 - Ordering product will reduce product's stock
 - Deleting an order will restore product's stock
 
 ## Work In Progress
-- Refine product management for each user 
 - Handle validations
 
 ## Postman Collection

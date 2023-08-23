@@ -35,6 +35,7 @@ const upload = multer({
 
 router.post("/", checkAuth, upload.single("picture"), async (req, res) => {
     const { categoryId, name, description, price, stock } = req.body;
+    const userId = req.authenticatedUser.id;
     const picture = req.file.filename;
 
     try {
@@ -45,6 +46,7 @@ router.post("/", checkAuth, upload.single("picture"), async (req, res) => {
             });
         }
         const newProduct = await Products.create({
+            userId,
             categoryId: parseInt(categoryId),
             name,
             picture: req.protocol + "://" + req.get("host") + "/uploads/product/" + picture,
@@ -113,6 +115,9 @@ router.put("/:productId", checkAuth, upload.single("picture"), async (req, res) 
         if (!productToUpdate) {
             return res.status(404).json({ message: "Product not found" });
         }
+        if (productToUpdate.userId !== req.authenticatedUser.id) {
+            return res.status(403).json({ message: "You are not owner of this product" });
+        }
         if (req.file) {
             productToUpdate.picture = req.protocol + "://" + req.get("host") + "/uploads/product/" + req.file.filename;
         }
@@ -144,6 +149,9 @@ router.delete("/:productId", checkAuth, async (req, res) => {
         const product = await Products.findByPk(productId);
         if (!product) {
             return res.status(404).json({ message: "Product not found" });
+        }
+        if (product.userId !== req.authenticatedUser.id) {
+            return res.status(403).json({ message: "You are not owner of this product" });
         }
 
         await product.destroy();
