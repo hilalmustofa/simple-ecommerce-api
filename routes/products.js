@@ -3,7 +3,7 @@ const router = express.Router();
 const checkAuth = require("../middleware/auth");
 const multer = require("multer");
 const { Products } = require("../models");
-const { up } = require("../migrations/1-create-users");
+const { response, responseWithData } = require("../middleware/response");
 
 const storage = multer.diskStorage({
     destination: function (req, file, cb) {
@@ -17,11 +17,28 @@ const storage = multer.diskStorage({
     },
 });
 
+function handleUploadError(multerUploadFunction) {
+    return (req, res, next) =>
+        multerUploadFunction(req, res, err => {
+            if (err) {
+                if (err instanceof multer.MulterError) {
+                    if (err.code === "LIMIT_FILE_SIZE") {
+                        return res.status(422).json(response(422, "File is too large"));
+                    }
+                } else {
+                    return res.status(422).json(response(422, "File format is not supported, only JPG and PNG are allowed"));
+                }
+            }
+            next();
+        });
+}
+
 const fileFilter = (req, file, cb) => {
-    if (file.mimetype === "image/jpeg" || file.mimetype === "image/png") {
+    if (file.mimetype == "image/jpeg" || file.mimetype === "image/png") {
         cb(null, true);
     } else {
-        cb(new Error("Only JPG and PNG files are allowed"), false);
+        cb(null, false);
+        return cb(new Error("invalid mimtype"));
     }
 };
 
@@ -33,7 +50,9 @@ const upload = multer({
     fileFilter: fileFilter,
 });
 
-router.post("/", checkAuth, upload.single("picture"), async (req, res) => {
+const checkFile = handleUploadError(upload.single("picture"));
+
+router.post("/", checkAuth, checkFile, async (req, res) => {
     const { categoryId, name, description, price, stock } = req.body;
     const userId = req.authenticatedUser.id;
     const picture = req.file.filename;
@@ -41,9 +60,7 @@ router.post("/", checkAuth, upload.single("picture"), async (req, res) => {
     try {
         const existingProduct = await Products.findOne({ where: { name } });
         if (existingProduct) {
-            return res.status(422).json({
-                message: "Product already exist",
-            });
+            return res.status(422).json(response(422, "Product name already exist"));
         }
         const newProduct = await Products.create({
             userId,
@@ -66,7 +83,8 @@ router.post("/", checkAuth, upload.single("picture"), async (req, res) => {
             createdAt: newProduct.createdAt,
         };
 
-        return res.status(201).json(productResponse);
+        return res.status(201).json(responseWithData(201, productResponse, "Successfully create product"));
+
     } catch (error) {
         console.error(error);
         return res.status(500).json({ message: error });
@@ -76,12 +94,12 @@ router.post("/", checkAuth, upload.single("picture"), async (req, res) => {
 router.get("/", async (req, res) => {
     try {
         const allProducts = await Products.findAll({
-            attributes: { exclude: ["deletedAt"] }
+            attributes: { exclude: ["deletedAt", "categoryId", "userId"] }
         });
         if (allProducts.length === 0) {
-            return res.status(404).json({ message: "No products found, please create one" });
+            return res.status(404).json(response(404, "No products found, please create one"));
         }
-        return res.status(200).json(allProducts);
+        return res.status(200).json(responseWithData(200, allProducts, "Successfully get product list"));
     } catch (error) {
         console.error(error);
         return res.status(500).json({ message: error });
@@ -94,29 +112,29 @@ router.get("/:productId", async (req, res) => {
 
     try {
         const product = await Products.findByPk(productId, {
-            attributes: { exclude: ["deletedAt"] }
+            attributes: { exclude: ["deletedAt", "categoryId", "userId"] }
         });
         if (!product) {
-            return res.status(404).json({ message: "Product not found" });
+            return res.status(404).json(response(404, "Product not found"));
         }
-        return res.status(200).json(product);
+        return res.status(200).json(responseWithData(200, product, "Successfully get product detail"));
     } catch (error) {
         console.error(error);
         return res.status(500).json({ message: error });
     }
 });
 
-router.put("/:productId", checkAuth, upload.single("picture"), async (req, res) => {
+router.put("/:productId", checkAuth, checkFile, async (req, res) => {
     const { productId } = req.params;
     const { name, picture, description, price, stock } = req.body;
 
     try {
         const productToUpdate = await Products.findByPk(productId);
         if (!productToUpdate) {
-            return res.status(404).json({ message: "Product not found" });
+            return res.status(404).json(response(404, "Product not found"));
         }
         if (productToUpdate.userId !== req.authenticatedUser.id) {
-            return res.status(403).json({ message: "You are not owner of this product" });
+            return res.status(403).json(response(403, "You are not owner of this product"));
         }
         if (req.file) {
             productToUpdate.picture = req.protocol + "://" + req.get("host") + "/uploads/product/" + req.file.filename;
@@ -135,7 +153,7 @@ router.put("/:productId", checkAuth, upload.single("picture"), async (req, res) 
             createdAt: updatedProduct.createdAt,
         };
 
-        return res.status(201).json(productResponse);
+        return res.status(200).json(responseWithData(200, productResponse, "Successfully update product"));
     } catch (error) {
         console.error(error);
         return res.status(500).json({ message: error });
@@ -148,15 +166,14 @@ router.delete("/:productId", checkAuth, async (req, res) => {
     try {
         const product = await Products.findByPk(productId);
         if (!product) {
-            return res.status(404).json({ message: "Product not found" });
+            return res.status(404).json(response(404, "Product not found"));
         }
         if (product.userId !== req.authenticatedUser.id) {
-            return res.status(403).json({ message: "You are not owner of this product" });
+            return res.status(403).json(response(403, "You are not owner of this product"));
         }
 
         await product.destroy();
-
-        return res.status(200).json({ message: "Product successfully deleted" });
+        return res.status(200).json(response(200, "Successfully delete product"));
     } catch (error) {
         console.error(error);
         return res.status(500).json({ message: error });

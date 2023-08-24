@@ -3,6 +3,7 @@ const router = express.Router();
 const { Categories, Products } = require("../models");
 const checkAuth = require("../middleware/auth");
 const multer = require("multer");
+const { response, responseWithData } = require("../middleware/response");
 
 const storage = multer.diskStorage({
     destination: function (req, file, cb) {
@@ -16,11 +17,28 @@ const storage = multer.diskStorage({
     },
 });
 
+function handleUploadError(multerUploadFunction) {
+    return (req, res, next) =>
+        multerUploadFunction(req, res, err => {
+            if (err) {
+                if (err instanceof multer.MulterError) {
+                    if (err.code === "LIMIT_FILE_SIZE") {
+                        return res.status(422).json(response(422, "File is too large"));
+                    }
+                } else {
+                    return res.status(422).json(response(422, "File format is not supported, only JPG and PNG are allowed"));
+                }
+            }
+            next();
+        });
+}
+
 const fileFilter = (req, file, cb) => {
-    if (file.mimetype === "image/jpeg" || file.mimetype === "image/png") {
+    if (file.mimetype == "image/jpeg" || file.mimetype === "image/png") {
         cb(null, true);
     } else {
-        cb(new Error("Only JPG and PNG files are allowed"), false);
+        cb(null, false);
+        return cb(new Error("invalid mimtype"));
     }
 };
 
@@ -32,54 +50,52 @@ const upload = multer({
     fileFilter: fileFilter,
 });
 
-router.post("/", checkAuth, upload.single("icon"), async (req, res) => {
+const checkFile = handleUploadError(upload.single("icon"))
+
+router.post("/", checkAuth, checkFile, async (req, res) => {
     const icon = req.file.filename;
     const { name } = req.body;
     try {
         if (req.authenticatedUser.role !== "admin") {
-            return res.status(403).json({ message: "Only admin can manage categories" });
+            return res.status(403).json(response(403, "Only admin can manage categories"));
         }
         const existingCategory = await Categories.findOne({ where: { name } });
         if (existingCategory) {
-            return res.status(422).json({
-                message: "Category name already exist",
-            });
+            return res.status(422).json(response(422, "Category name already exist"));
         }
         const newCategory = await Categories.create({
             name,
             icon: req.protocol + "://" + req.get("host") + "/uploads/category/" + icon,
         });
-        res.status(201).json(newCategory);
+        return res.status(201).json(responseWithData(201, newCategory, "Successfully create category"));
     } catch (error) {
         console.error(error);
         res.status(500).json({ message: error });
     }
 });
 
-router.put("/:id", checkAuth, upload.single("icon"), async (req, res) => {
+router.put("/:id", checkAuth, checkFile, async (req, res) => {
     const categoryId = req.params.id;
     const { name } = req.body;
 
     try {
         if (req.authenticatedUser.role !== "admin") {
-            return res.status(403).json({ message: "Only admin can manage categories" });
+            return res.status(403).json(response(403, "Only admin can manage categories"));
         }
 
         const existingCategory = await Categories.findOne({ where: { name } });
         if (existingCategory) {
-            return res.status(422).json({
-                message: "Category name already exist",
-            });
+            return res.status(422).json(response(422, "Category name already exist"));
         }
 
         const categoryToUpdate = await Categories.findByPk(categoryId);
         if (!categoryToUpdate) {
-            return res.status(404).json({ message: "Category not found" });
+            return res.status(404).json(response(404, "Category not found"));
         }
 
         categoryToUpdate.name = name || categoryToUpdate.name;
         if (req.file) {
-            categoryToUpdate.icon = req.protocol + "://" + req.get("host") + "/uploads/avatar/" + req.file.filename;
+            categoryToUpdate.icon = req.protocol + "://" + req.get("host") + "/uploads/category/" + req.file.filename;
         }
 
         await categoryToUpdate.save();
@@ -91,10 +107,8 @@ router.put("/:id", checkAuth, upload.single("icon"), async (req, res) => {
             updatedAt: categoryToUpdate.updatedAt,
         };
 
-        return res.status(200).json({
-            message: "Category updated successfully",
-            ...updatedCategory
-        });
+        return res.status(200).json(responseWithData(200, updatedCategory, "Successfully update category"));
+
     } catch (error) {
         console.error(error);
         res.status(500).json({ message: error });
@@ -104,16 +118,16 @@ router.put("/:id", checkAuth, upload.single("icon"), async (req, res) => {
 router.delete("/:id", checkAuth, async (req, res) => {
     try {
         if (req.authenticatedUser.role !== "admin") {
-            return res.status(403).json({ message: "Only admin can manage categories" });
+            return res.status(403).json(response(403, "Only admin can manage categories"));
         }
 
         const category = await Categories.findByPk(req.params.id);
         if (!category) {
-            return res.status(404).json({ message: "Category not found" });
+            return res.status(404).json(response(404, "Category not found"));
         }
 
         await category.destroy();
-        res.json({ message: "Category successfully deleted" });
+        return res.status(200).json(response(200, "Successfully delete category"));
     } catch (error) {
         console.error(error);
         res.status(500).json({ message: error });
@@ -125,7 +139,7 @@ router.get("/", async (req, res) => {
         const categories = await Categories.findAll({
             attributes: { exclude: ["deletedAt"] }
         });
-        res.json(categories);
+        return res.status(200).json(responseWithData(200, categories, "Successfully get category list"));
     } catch (error) {
         console.error(error);
         res.status(500).json({ message: error });
@@ -146,7 +160,7 @@ router.get("/:id", async (req, res) => {
                 {
                     model: Products,
                     attributes: {
-                        exclude: ["deletedAt", "categoryId"],
+                        exclude: ["deletedAt", "categoryId", "userId"],
                     },
                     as: "products",
                     offset: (page - 1) * pageSize,
@@ -156,10 +170,10 @@ router.get("/:id", async (req, res) => {
         });
 
         if (!category) {
-            return res.status(404).json({ message: "Category not found" });
+            return res.status(404).json(response(404, "Category not found"));
         }
 
-        res.json(category);
+        return res.status(200).json(responseWithData(200, category, "Successfully get category detail"));
     } catch (error) {
         console.error(error);
         res.status(500).json({ message: error });

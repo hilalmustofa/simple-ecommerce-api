@@ -72,13 +72,33 @@ npm run start
 - Ordering product will reduce product's stock
 - Deleting an order will restore product's stock
 
+#### 5. Standardized responses
+
+For response with data:
+```json
+{
+    "code" : ,
+    "data" : ,
+    "message" : 
+}
+```
+
+For response without data:
+```json
+{
+    "code" : ,
+    "message" : 
+}
+```
+
 ## Work In Progress
-- Handle validations
+- Creating Front-End
+- Bughunt & Bugfix
 
 ## Postman Collection
 - [Collection](https://api.postman.com/collections/23671827-ddc6988e-54a2-4a9f-a00e-82994a6ae685?access_key=PMAT-01H8GGF2DSQ298SKXKRREBPFYY)
 - Environment (create one)
-```bash
-url : http://localhost:4000
-access_token
-```
+
+`url=http://localhost:4000`
+
+`access_token`
