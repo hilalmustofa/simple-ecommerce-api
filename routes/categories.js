@@ -4,6 +4,8 @@ const { Categories, Products } = require("../models");
 const checkAuth = require("../middleware/auth");
 const multer = require("multer");
 const { response, responseWithData } = require("../middleware/response");
+const sharp = require("sharp");
+
 
 const storage = multer.diskStorage({
     destination: function (req, file, cb) {
@@ -63,9 +65,37 @@ router.post("/", checkAuth, checkFile, async (req, res) => {
         if (existingCategory) {
             return res.status(422).json(response(422, "Category name already exist"));
         }
+
+        const imagePath = 'uploads/category/' + icon;
+        const processedImagePath = 'uploads/category/processed_' + icon;
+
+        const image = sharp(imagePath);
+
+        const metadata = await image.metadata();
+        const width = metadata.width;
+        const height = metadata.height;
+
+        const squareSize = Math.max(width, height);
+
+        await sharp({
+            create: {
+                width: squareSize,
+                height: squareSize,
+                channels: 4,
+                background: { r: 0, g: 0, b: 0, alpha: 0 }
+            },
+        })
+            .composite([
+                {
+                    input: imagePath,
+                    gravity: sharp.gravity.center,
+                },
+            ])
+            .toFile(processedImagePath);
+
         const newCategory = await Categories.create({
             name,
-            icon: req.protocol + "://" + req.get("host") + "/uploads/category/" + icon,
+            icon: req.protocol + "://" + req.get("host") + "/" + processedImagePath,
         });
         return res.status(201).json(responseWithData(201, newCategory, "Successfully create category"));
     } catch (error) {
@@ -95,7 +125,34 @@ router.put("/:id", checkAuth, checkFile, async (req, res) => {
 
         categoryToUpdate.name = name || categoryToUpdate.name;
         if (req.file) {
-            categoryToUpdate.icon = req.protocol + "://" + req.get("host") + "/uploads/category/" + req.file.filename;
+            var icon = req.file.filename;
+            const imagePath = 'uploads/category/' + icon;
+        const processedImagePath = 'uploads/category/processed_' + icon;
+
+        const image = sharp(imagePath);
+
+        const metadata = await image.metadata();
+        const width = metadata.width;
+        const height = metadata.height;
+
+        const squareSize = Math.max(width, height);
+
+        await sharp({
+            create: {
+                width: squareSize,
+                height: squareSize,
+                channels: 4,
+                background: { r: 0, g: 0, b: 0, alpha: 0 }
+            },
+        })
+            .composite([
+                {
+                    input: imagePath,
+                    gravity: sharp.gravity.center,
+                },
+            ])
+            .toFile(processedImagePath);
+            categoryToUpdate.icon = req.protocol + "://" + req.get("host") + "/" + processedImagePath;
         }
 
         await categoryToUpdate.save();
@@ -149,8 +206,8 @@ router.get("/", async (req, res) => {
 router.get("/:id", async (req, res) => {
     try {
         const categoryId = req.params.id;
-        const page = req.query.page || 1;
-        const pageSize = 10;
+        const page = parseInt(req.query.page) || 1;
+        const per_page = parseInt(req.query.per_page) || 9;
 
         const category = await Categories.findByPk(categoryId, {
             attributes: {
@@ -163,8 +220,8 @@ router.get("/:id", async (req, res) => {
                         exclude: ["deletedAt", "categoryId", "userId"],
                     },
                     as: "products",
-                    offset: (page - 1) * pageSize,
-                    limit: pageSize,
+                    offset: (page - 1) * per_page,
+                    limit: per_page,
                 },
             ],
         });
@@ -173,11 +230,28 @@ router.get("/:id", async (req, res) => {
             return res.status(404).json(response(404, "Category not found"));
         }
 
-        return res.status(200).json(responseWithData(200, category, "Successfully get category detail"));
+        const total = await Products.count({
+            where: { categoryId: categoryId },
+        });
+
+        const responsePayload = {
+            id: category.id,
+            name: category.name,
+            icon: category.icon,
+            total: total,
+            page: page,
+            per_page: per_page,
+            createdAt: category.createdAt,
+            updatedAt: category.updatedAt,
+            products: category.products,
+        };
+
+        return res.status(200).json(responseWithData(200, responsePayload, "Successfully get category detail"));
     } catch (error) {
         console.error(error);
         res.status(500).json({ message: error });
     }
 });
+
 
 module.exports = router;

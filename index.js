@@ -6,6 +6,7 @@ const cookieParser = require("cookie-parser");
 const helmet = require("helmet");
 const cors = require("cors");
 const rateLimit = require("express-rate-limit");
+require('dotenv').config();
 
 app.use(bodyParser.json());
 app.use(cookieParser());
@@ -14,10 +15,11 @@ app.use(cors({ origin: process.env.feurl, credentials: true }));
 
 const limiter = rateLimit({
    windowMs: 60000,
-   max: 100,
+   max: 60,
    message: {
-      error: 'Too many requests',
-      message: 'Rate limit of 100 per minute exceeded, please try again later'
+      code: 429,
+      data : { error: 'Too many requests' },
+      message: 'Rate limit of 60 request per minute exceeded, please try again later'
    },
 });
 app.use(limiter);
@@ -34,7 +36,7 @@ app.use("/categories", categoriesRoutes);
 app.use("/products", productsRoutes);
 app.use("/orders", ordersRoutes);
 app.use("*", (req, res) => {
-   res.status(404).json({ message: "No API route with that URL" });
+   res.status(404).json({code: 400, message: "No API route with that URL" });
 });
 
 const PORT = process.env.PORT || 4000;
