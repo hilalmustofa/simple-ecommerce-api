@@ -18,6 +18,19 @@ router.get("/", checkAuth, async (req, res) => {
     res.status(200).json(responseWithData(200, users, "Successfully get user list"));
 });
 
+router.get("/my", checkAuth, async (req, res) => {
+    const userId = req.authenticatedUser.id;
+    const user = await Users.findByPk(userId, {
+        attributes: {
+            exclude: ["deletedAt", "password"],
+        }
+    });
+    if (!user) {
+        return res.status(404).json(response(404, "User not found"));
+    }
+    res.status(200).json(responseWithData(200, user, "Successfully get user profile"));
+});
+
 router.get("/:id", checkAuth, async (req, res) => {
     const userId = req.params.id;
     const user = await Users.findByPk(userId, {
@@ -80,16 +93,18 @@ const checkFile = handleUploadError(upload.single("avatar"));
 router.post("/register", checkFile, async (req, res) => {
     const { username, password, fullname } = req.body;
     const users = await Users.findAll();
-    const avatar = req.file.filename;
-
+    
     try {
         const existingUser = await Users.findOne({ where: { username } });
         if (existingUser) {
             return res.status(422).json(response(422, "Username already taken"));
         }
-
+        if (!username || !password || !fullname || ! req.file) {
+            return res.status(422).json(response(422, "All fields are required"));
+        }
         let salt = bcrypt.genSaltSync(10);
         let hash = bcrypt.hashSync(password, salt);
+        const avatar = req.file.filename;
 
         const newUser = await Users.create({
             username,
@@ -127,7 +142,6 @@ router.post("/login", async (req, res) => {
             if (!result) {
                 return res.status(401).json(response(401, "Username or password is incorrect"));
             }
-
             let passwordHash = result.password;
             let checkPassword = bcrypt.compareSync(password, passwordHash);
             if (checkPassword) {
@@ -137,6 +151,7 @@ router.post("/login", async (req, res) => {
                     { algorithm: "HS256", expiresIn: "1h" }
                 );
                 res.cookie("access_token", token, { httpOnly: true, secure: true });
+                console.log(token)
                 return res.status(200).json(responseWithData(200, { access_token: token }, "Successfully login"));
             } else {
                 return res.status(401).json(response(401, "Username or password is incorrect"));

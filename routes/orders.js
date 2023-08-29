@@ -4,6 +4,37 @@ const checkAuth = require("../middleware/auth");
 const { Orders, Products } = require("../models");
 const { response, responseWithData } = require("../middleware/response");
 
+router.post("/process", checkAuth, async (req, res) => {
+  try {
+    const userId = req.authenticatedUser.id;
+    const { orderId } = req.body; 
+
+    const orders = await Orders.findAll({
+      where: { userId, id: orderId },
+      include: [Products],
+    });
+
+    if (orders.length === 0) {
+      return res.status(404).json({ message: "Orders not found" });
+    }
+
+    for (const order of orders) {
+      const product = order.Product;
+      const newStock = product.stock - order.amount;
+      if (newStock < 0) {
+        return res.status(400).json({ message: "Insufficient stock" });
+      }
+      const processed = await Products.update({ stock: newStock }, { where: { id: product.id } });
+      await Orders.destroy({ where: { id: order.id } });
+      return res.status(200).json(responseWithData(200, processed, "Successfully process order"));
+    }
+
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: error });
+  }
+});
+
 router.post("/:productId", checkAuth, async (req, res) => {
   try {
     const productId = req.params.productId;
@@ -34,7 +65,6 @@ router.post("/:productId", checkAuth, async (req, res) => {
       totalPrice: product.price * order.amount,
     };
 
-    product.stock -= amount;
     await product.save();
     return res.status(201).json(responseWithData(201, orderResponse, "Successfully create order"));
   } catch (error) {
@@ -73,45 +103,6 @@ router.get("/my", checkAuth, async (req, res) => {
     });
 
     return res.status(200).json(responseWithData(200, orderDetails, "Successfully get order list"));
-  } catch (error) {
-    console.error(error);
-    return res.status(500).json({ message: error });
-  }
-});
-
-
-router.get("/:orderId", checkAuth, async (req, res) => {
-  const { orderId } = req.params;
-  const userId = req.authenticatedUser.id;
-  try {
-
-    const order = await Orders.findByPk(orderId, {
-      include: [
-        {
-          model: Products,
-          attributes: ["id", "name", "picture", "price"],
-        },
-      ],
-    });
-
-    if (!order) {
-      return res.status(404).json(response(404, "Order not found"));
-    }
-    if (order.userId !== req.authenticatedUser.id) {
-      return res.status(403).json(response(403, "You are not owner of this order"));
-    }
-
-    const orderDetails = {
-      orderId: order.id,
-      productId: order.Product.id,
-      productName: order.Product.name,
-      productPicture: order.Product.picture,
-      productPrice: order.Product.price,
-      amount: order.amount,
-      totalPrice: order.Product.price * order.amount,
-    };
-
-    return res.status(200).json(responseWithData(200, orderDetails, "Successfully get order details"));
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: error });
