@@ -7,15 +7,15 @@ const { response, responseWithData } = require("../middleware/response");
 router.post("/process", checkAuth, async (req, res) => {
   try {
     const userId = req.authenticatedUser.id;
-    const { orderId } = req.body; 
+    const { orderIds } = req.body;
 
     const orders = await Orders.findAll({
-      where: { userId, id: orderId },
-      include: [Products],
+      where: { userId, id: orderIds },
+      include: [Products]
     });
 
     if (orders.length === 0) {
-      return res.status(404).json({ message: "Orders not found" });
+      return res.status(404).json(response(404, "Order not found"));
     }
 
     for (const order of orders) {
@@ -24,10 +24,21 @@ router.post("/process", checkAuth, async (req, res) => {
       if (newStock < 0) {
         return res.status(400).json({ message: "Insufficient stock" });
       }
-      const processed = await Products.update({ stock: newStock }, { where: { id: product.id } });
+
+      await Products.update({ stock: newStock }, { where: { id: product.id } });
       await Orders.destroy({ where: { id: order.id } });
-      return res.status(200).json(responseWithData(200, processed, "Successfully process order"));
     }
+
+    const processed = orders.map(order => ({
+      orderId: order.id,
+      productName: order.Product.name,
+      productPicture: order.Product.picture,
+      productPrice: order.Product.price,
+      amount: order.amount,
+      totalPrice: order.Product.price * order.amount,
+    }));
+
+    return res.status(200).json(responseWithData(200, processed, "Successfully process orders"));
 
   } catch (error) {
     console.error(error);
