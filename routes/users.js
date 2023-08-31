@@ -150,8 +150,7 @@ router.post("/login", async (req, res) => {
                     process.env.secret,
                     { algorithm: "HS256", expiresIn: "1h" }
                 );
-                res.cookie("access_token", token, { httpOnly: true, secure: true });
-                console.log(token)
+                console.log(token);
                 return res.status(200).json(responseWithData(200, { access_token: token }, "Successfully login"));
             } else {
                 return res.status(401).json(response(401, "Username or password is incorrect"));
