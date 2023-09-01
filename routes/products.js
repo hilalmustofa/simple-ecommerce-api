@@ -6,14 +6,6 @@ const { Products } = require("../models");
 const { response, responseWithData } = require("../middleware/response");
 const sharp = require("sharp");
 
-const formatRupiah = (money) => {
-    return new Intl.NumberFormat("id-ID", {
-      style: "currency",
-      currency: "IDR",
-      minimumFractionDigits: 0,
-    }).format(money);
-  };
-
 const storage = multer.diskStorage({
     destination: function (req, file, cb) {
         cb(null, "uploads/product");
@@ -161,6 +153,22 @@ router.get("/", async (req, res) => {
     }
 });
 
+router.get("/my" ,checkAuth , async (req, res) => {
+    const userId = req.authenticatedUser.id
+    try {
+        const products = await Products.findAll({
+            where: { userId },
+            attributes: { exclude: ["deletedAt", "categoryId", "userId"] }
+        });
+        if (!products.length) {
+            return res.status(404).json(response(404, "No products found for this user"));
+        }
+        return res.status(200).json(responseWithData(200, products, "Successfully get user's products"));
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({ message: error });
+    }
+});
 
 
 router.get("/:productId", async (req, res) => {
