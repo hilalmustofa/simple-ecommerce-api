@@ -56,9 +56,29 @@ const checkFile = handleUploadError(upload.single("picture"));
 router.post("/", checkAuth, checkFile, async (req, res) => {
     const { categoryId, name, description, price, stock } = req.body;
     const userId = req.authenticatedUser.id;
+    if (!req.file) {
+        return res.status(422).json(response(422, 'Picture is required'));
+    }
     const picture = req.file.filename;
 
     try {
+        if (!categoryId) {
+            return res.status(422).json(response(422, 'Category ID is required'));
+        }
+        const existingCategory = await Categories.findByPk(categoryId);
+        if (!existingCategory) {
+            return res.status(422).json(response(422, 'Invalid Category ID'));
+        }
+        if (!name) {
+            return res.status(422).json(response(422, 'Name is required'));
+        }
+        if (!description) {
+            return res.status(422).json(response(422, 'Description is required'));
+        }
+        if (!stock) {
+            return res.status(422).json(response(422, 'Stock is required'));
+        }
+
         const existingProduct = await Products.findOne({ where: { name } });
         if (existingProduct) {
             return res.status(422).json(response(422, 'Product name already exists'));
@@ -153,7 +173,7 @@ router.get("/", async (req, res) => {
     }
 });
 
-router.get("/my" ,checkAuth , async (req, res) => {
+router.get("/my", checkAuth, async (req, res) => {
     const userId = req.authenticatedUser.id
     try {
         const products = await Products.findAll({
@@ -193,41 +213,61 @@ router.put("/:productId", checkAuth, checkFile, async (req, res) => {
     const { name, description, price, stock } = req.body;
 
     try {
+
+        if (typeof name !== 'string' || name.length > 30) {
+            return res.status(422).json(response(422, 'Name must be a string with, max 30 characters'));
+        }
+
+        if (description.length > 500) {
+            return res.status(422).json(response(422, 'Description max 500 characters'));
+        }
+
+        if (!/^\d+$/.test(stock) || stock.length > 4) {
+            return res.status(422).json(response(422, 'Stock must be a number, max 4 characters'));
+        }
+
+        if (!/^\d+(\.\d{1,2})?$/.test(price) || price.length > 9) {
+            return res.status(422).json(response(422, 'Price must be a number, max 9 characters'));
+        }
+
         const productToUpdate = await Products.findByPk(productId);
         if (!productToUpdate) {
             return res.status(404).json(response(404, "Product not found"));
         }
         if (productToUpdate.userId !== req.authenticatedUser.id) {
-            return res.status(403).json(response(403, "You are not owner of this product"));
+            return res.status(403).json(response(403, "You are not the owner of this product"));
+        }
+        if (!req.file) {
+            return res.status(422).json(response(422, 'Picture is required'));
         }
         if (req.file) {
             var picture = req.file.filename;
             const imagePath = 'uploads/product/' + picture;
-        const processedImagePath = 'uploads/product/processed_' + picture;
+            const processedImagePath = 'uploads/product/processed_' + picture;
 
-        const image = sharp(imagePath);
+            const image = sharp(imagePath);
 
-        const metadata = await image.metadata();
-        const width = metadata.width;
-        const height = metadata.height;
+            const metadata = await image.metadata();
+            const width = metadata.width;
+            const height = metadata.height;
 
-        const squareSize = Math.max(width, height);
+            const squareSize = Math.max(width, height);
 
-        await sharp({
-            create: {
-                width: squareSize,
-                height: squareSize,
-                channels: 4,
-                background: { r: 0, g: 0, b: 0, alpha: 0 }
-            },
-        })
-            .composite([
-                {
-                    input: imagePath,
-                    gravity: sharp.gravity.center,
+            await sharp({
+                create: {
+                    width: squareSize,
+                    height: squareSize,
+                    channels: 4,
+                    background: { r: 0, g: 0, b: 0, alpha: 0 }
                 },
-            ])
-            .toFile(processedImagePath);
+            })
+                .composite([
+                    {
+                        input: imagePath,
+                        gravity: sharp.gravity.center,
+                    },
+                ])
+                .toFile(processedImagePath);
             picture = req.protocol + '://' + req.get('host') + '/' + processedImagePath;
         }
         const updatedProduct = await productToUpdate.update({ name, picture, description, price, stock });

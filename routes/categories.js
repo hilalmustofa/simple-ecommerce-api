@@ -55,9 +55,15 @@ const upload = multer({
 const checkFile = handleUploadError(upload.single("icon"))
 
 router.post("/", checkAuth, checkFile, async (req, res) => {
+    if (!req.file) {
+        return res.status(422).json(response(422, 'Picture is required'));
+    }
     const icon = req.file.filename;
     const { name } = req.body;
     try {
+        if (typeof name !== 'string' || name.length > 20) {
+            return res.status(422).json(response(422, 'Name must be a string, max 20 characters'));
+        }
         if (req.authenticatedUser.role !== "admin") {
             return res.status(403).json(response(403, "Only admin can manage categories"));
         }
@@ -105,12 +111,21 @@ router.post("/", checkAuth, checkFile, async (req, res) => {
 });
 
 router.put("/:id", checkAuth, checkFile, async (req, res) => {
+    if (!req.file) {
+        return res.status(422).json(response(422, 'Picture is required'));
+    }
     const categoryId = req.params.id;
     const { name } = req.body;
 
     try {
         if (req.authenticatedUser.role !== "admin") {
             return res.status(403).json(response(403, "Only admin can manage categories"));
+        }
+        if (typeof name !== 'string' || name.length > 20) {
+            return res.status(422).json(response(422, 'Name must be a string, max 20 characters'));
+        }
+        if (categoryId === "1" || categoryId === "2" || categoryId === "3") {
+            return res.status(403).json(response(403, "Default categories cannot be edited"));
         }
 
         const existingCategory = await Categories.findOne({ where: { name } });
@@ -127,31 +142,28 @@ router.put("/:id", checkAuth, checkFile, async (req, res) => {
         if (req.file) {
             var icon = req.file.filename;
             const imagePath = 'uploads/category/' + icon;
-        const processedImagePath = 'uploads/category/processed_' + icon;
+            const processedImagePath = 'uploads/category/processed_' + icon;
+            const image = sharp(imagePath);
+            const metadata = await image.metadata();
+            const width = metadata.width;
+            const height = metadata.height;
+            const squareSize = Math.max(width, height);
 
-        const image = sharp(imagePath);
-
-        const metadata = await image.metadata();
-        const width = metadata.width;
-        const height = metadata.height;
-
-        const squareSize = Math.max(width, height);
-
-        await sharp({
-            create: {
-                width: squareSize,
-                height: squareSize,
-                channels: 4,
-                background: { r: 0, g: 0, b: 0, alpha: 0 }
-            },
-        })
-            .composite([
-                {
-                    input: imagePath,
-                    gravity: sharp.gravity.center,
+            await sharp({
+                create: {
+                    width: squareSize,
+                    height: squareSize,
+                    channels: 4,
+                    background: { r: 0, g: 0, b: 0, alpha: 0 }
                 },
-            ])
-            .toFile(processedImagePath);
+            })
+                .composite([
+                    {
+                        input: imagePath,
+                        gravity: sharp.gravity.center,
+                    },
+                ])
+                .toFile(processedImagePath);
             categoryToUpdate.icon = req.protocol + "://" + req.get("host") + "/" + processedImagePath;
         }
 
@@ -208,7 +220,6 @@ router.get("/:id", async (req, res) => {
         const categoryId = req.params.id;
         const page = parseInt(req.query.page) || 1;
         const per_page = parseInt(req.query.per_page) || 9;
-
         const category = await Categories.findByPk(categoryId, {
             attributes: {
                 exclude: ["deletedAt"],

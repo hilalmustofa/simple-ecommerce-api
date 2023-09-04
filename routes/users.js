@@ -93,14 +93,26 @@ const checkFile = handleUploadError(upload.single("avatar"));
 router.post("/register", checkFile, async (req, res) => {
     const { username, password, fullname } = req.body;
     const users = await Users.findAll();
-    
+
     try {
         const existingUser = await Users.findOne({ where: { username } });
         if (existingUser) {
             return res.status(422).json(response(422, "Username already taken"));
         }
-        if (!username || !password || !fullname || ! req.file) {
+        if (typeof username !== 'string' || typeof fullname !== 'string') {
+            return res.status(422).json(response(422, "Username, or fullname must be string"));
+        }
+        if (!username || !password || !fullname || !req.file) {
             return res.status(422).json(response(422, "All fields are required"));
+        }
+        if (username.length > 10) {
+            return res.status(422).json(response(422, "Username is too long. You want to be unique? max 10 characters."));
+        }
+        if (password.length > 8) {
+            return res.status(422).json(response(422, "Password is too long. We're not concerned about security here. Max 8 characters."));
+        }
+        if (fullname.length > 20) {
+            return res.status(422).json(response(422, "Fullname is too long. Who are you? Max 20 characters."));
         }
         let salt = bcrypt.genSaltSync(10);
         let hash = bcrypt.hashSync(password, salt);
@@ -174,7 +186,24 @@ router.put("/:userId", checkAuth, checkFile, async (req, res) => {
         if (!userToUpdate) {
             return res.status(404).json(response(404, "User not found"));
         }
-
+        if (typeof username !== 'string' || typeof fullname !== 'string') {
+            return res.status(422).json(response(422, "Username, or fullname must be string"));
+        }
+        if (userId === "1") {
+            return res.status(403).json(response(403, "You cannot edit admin, admin is God"));
+        }
+        if (username.length > 10) {
+            return res.status(422).json(response(422, "Username is too long. You want to be unique? max 10 characters."));
+        }
+        if (password.length > 8) {
+            return res.status(422).json(response(422, "Password is too long. We're not concerned about security here. Max 8 characters."));
+        }
+        if (fullname.length > 20) {
+            return res.status(422).json(response(422, "Fullname is too long. Who are you? Max 20 characters."));
+        }
+        if (role !== "admin" || role !== "user") {
+            return res.status(422).json(response(422, "There are only admin and user roles"));
+        }
         if (req.authenticatedUser.role !== "admin") {
             return res.status(403).json(response(403, "Access denied. Only admin can update user"));
         }
@@ -243,15 +272,6 @@ router.delete("/:id", checkAuth, async (req, res) => {
             message: error,
         });
     }
-});
-
-
-router.post("/logout", function (req, res) {
-    if (!req.cookies.access_token) {
-        return res.status(401).json(response(401, "Unauthorized, please login first!"));
-    }
-    res.clearCookie("access_token");
-    return res.status(200).json(response(200, "Successfully logout"));
 });
 
 module.exports = router;
