@@ -5,6 +5,7 @@ const multer = require("multer");
 const { Products } = require("../models");
 const { response, responseWithData } = require("../middleware/response");
 const sharp = require("sharp");
+const { Op } = require("sequelize");
 
 const storage = multer.diskStorage({
     destination: function (req, file, cb) {
@@ -144,11 +145,16 @@ router.get("/", async (req, res) => {
     try {
         const page = parseInt(req.query.page) || 1;
         const per_page = parseInt(req.query.per_page) || 9;
-
         const offset = (page - 1) * per_page;
+        const search = req.query.search || '';
 
         const allProducts = await Products.findAndCountAll({
             attributes: { exclude: ["deletedAt", "categoryId", "userId"] },
+            where: {
+                name: {
+                    [Op.like]: `%${search}%`
+                }
+            },
             limit: per_page,
             offset: offset,
         });
